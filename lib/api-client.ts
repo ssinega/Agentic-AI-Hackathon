@@ -12,7 +12,7 @@ const apiClient: AxiosInstance = axios.create({
 apiClient.interceptors.request.use(
   (config) => {
     try {
-      const token = localStorage.getItem("auth_token");
+      const token = localStorage.getItem("auth_user");
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -33,7 +33,7 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       // Handle unauthorized
       try {
-        localStorage.removeItem("auth_token");
+        localStorage.removeItem("auth_user");
       } catch (storageError) {
         console.error("Failed to remove auth token from localStorage:", storageError);
       }

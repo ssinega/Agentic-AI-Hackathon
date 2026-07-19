@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { loginSchema } from "@/lib/validators";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcrypt";

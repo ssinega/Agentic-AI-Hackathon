@@ -7,10 +7,6 @@ import { Button } from "@/components/ui/Button";
 import { BarChart, Users, FileText, TrendingUp, AlertCircle, LogOut } from "lucide-react";
 import { getDataSummary } from "@/lib/mock-data-generator";
 
-export const dynamic = "force-dynamic";
-
-
-
 interface AuthUser {
   email: string;
   id: string;

@@ -27,7 +27,7 @@ export function Header() {
           </Button>
           
           {/* Logo for mobile/tablet */}
-          <Link href="/dashboard" className="md:hidden flex items-center space-x-2 group">
+          <Link href="/" className="md:hidden flex items-center space-x-2 group">
             <div className="relative w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center">
               <Image
                 src="/logo.svg"

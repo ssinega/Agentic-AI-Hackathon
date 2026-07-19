@@ -1,7 +1,6 @@
 "use client";
 
-export const dynamic = 'force-dynamic';
-
+import { Suspense } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
@@ -14,7 +13,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <Header />
         <main className="flex-1 overflow-auto bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
           <div className="p-6 md:p-8 max-w-7xl mx-auto">
-            {children}
+            <Suspense fallback={<div className="text-white text-center p-4">Loading page...</div>}>
+              {children}
+            </Suspense>
           </div>
         </main>
         <Footer />

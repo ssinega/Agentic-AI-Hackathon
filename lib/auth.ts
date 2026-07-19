@@ -49,13 +49,13 @@ export async function signOut(): Promise<void> {
   }
 
   // Clear localStorage token
-  localStorage.removeItem("auth_token");
+  localStorage.removeItem("auth_user");
 }
 
 export async function getSession(): Promise<AuthUser | null> {
   try {
     // Try to get from localStorage first
-    const token = localStorage.getItem("auth_token");
+    const token = localStorage.getItem("auth_user");
     if (token) {
       const parsed = JSON.parse(token);
       return parsed;
@@ -71,7 +71,7 @@ export async function getSession(): Promise<AuthUser | null> {
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
   try {
-    const token = localStorage.getItem("auth_token");
+    const token = localStorage.getItem("auth_user");
     if (token) {
       const parsed = JSON.parse(token);
       return parsed;
