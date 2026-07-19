@@ -1,0 +1,155 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  name      String?
+  avatar    String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  projects     Project[]
+  chatHistory  ChatHistory[]
+
+  @@map("users")
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  archivedAt  DateTime?
+
+  documents    Document[]
+  insights     Insight[]
+  themes       Theme[]
+  personas     Persona[]
+  opportunities Opportunity[]
+  reports      Report[]
+  chatHistory  ChatHistory[]
+
+  @@index([userId])
+  @@map("projects")
+}
+
+model Document {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  originalName String
+  filePath     String
+  fileType     String
+  fileSize     Int
+  uploadedAt   DateTime @default(now())
+
+  @@index([projectId])
+  @@map("documents")
+}
+
+model Insight {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type        String   // customer_need, pain_point, feature_request, etc.
+  content     String
+  frequency   Int      @default(1)
+  sentiment   String?  // positive, negative, neutral
+  confidence  Float    @default(0.0)
+  extractedAt DateTime @default(now())
+
+  @@index([projectId])
+  @@map("insights")
+}
+
+model Theme {
+  id             String   @id @default(cuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  frequency      Int      @default(1)
+  relatedInsights String[] // Array of insight IDs
+  createdAt      DateTime @default(now())
+
+  @@index([projectId])
+  @@map("themes")
+}
+
+model Persona {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type         String   // primary, secondary, tertiary
+  name         String
+  role         String?
+  description  String?
+  frustrations String?
+  goals        String?
+  behaviors    String?
+  size         String?  // large, medium, small
+  createdAt    DateTime @default(now())
+
+  @@index([projectId])
+  @@map("personas")
+}
+
+model Opportunity {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  description String
+  frequency   Int      @default(1)
+  severity    String   // high, medium, low
+  revenue     String?
+  confidence  Float    @default(0.0)
+  score       Float    @default(0.0)
+  ranking     Int?
+  createdAt   DateTime @default(now())
+
+  @@index([projectId])
+  @@map("opportunities")
+}
+
+model Report {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  generatedAt DateTime @default(now())
+  content     String   // HTML or JSON content
+  format      String   // html, pdf, json
+  createdAt   DateTime @default(now())
+
+  @@index([projectId])
+  @@map("reports")
+}
+
+model ChatHistory {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message   String
+  response  String
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@index([userId])
+  @@map("chat_history")
+}

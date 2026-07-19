@@ -1,0 +1,348 @@
+{
+  "audit_date": "2024-01-15",
+  "project": "DiscoveryOS",
+  "severity_summary": {
+    "critical": 11,
+    "high": 8,
+    "total_issues": 19
+  },
+  "critical_issues": [
+    {
+      "id": "CRITICAL-001",
+      "type": "Missing Authentication",
+      "severity": "CRITICAL",
+      "file_path": "app/api/documents/route.ts",
+      "line_numbers": [4, 21],
+      "description": "GET and POST endpoints for documents lack authentication checks. Any unauthenticated user can read/create documents.",
+      "severity_justification": "Complete lack of authentication allows unauthorized access to sensitive document data. Database queries execute without verifying user identity.",
+      "affected_endpoints": [
+        "GET /api/documents",
+        "POST /api/documents"
+      ],
+      "code_snippet": "export async function GET(request: NextRequest) {\n  const projectId = request.nextUrl.searchParams.get(\"projectId\");\n  const documents = await prisma.document.findMany({\n    where: projectId ? { projectId } : {},\n  });",
+      "recommended_fix": "1. Extract userId from authenticated session/token\n2. Add ownership validation: where: { projectId, userId }\n3. Return 401 if userId missing\n4. Validate projectId ownership before returning data"
+    },
+    {
+      "id": "CRITICAL-002",
+      "type": "Missing Authentication",
+      "severity": "CRITICAL",
+      "file_path": "app/api/insights/route.ts",
+      "line_numbers": [4],
+      "description": "GET endpoint for insights has no authentication. Returns all insights matching projectId/type regardless of user.",
+      "severity_justification": "Allows any user to query insights from any project. No ownership validation prevents cross-user data access.",
+      "affected_endpoints": [
+        "GET /api/insights"
+      ],
+      "code_snippet": "export async function GET(request: NextRequest) {\n  const projectId = request.nextUrl.searchParams.get(\"projectId\");\n  const insights = await prisma.insight.findMany({ where });",
+      "recommended_fix": "Add authentication check and ownership validation before querying insights"
+    },
+    {
+      "id": "CRITICAL-003",
+      "type": "Missing Authentication",
+      "severity": "CRITICAL",
+      "file_path": "app/api/themes/route.ts",
+      "line_numbers": [4],
+      "description": "GET endpoint for themes lacks authentication. No user verification before returning theme data.",
+      "severity_justification": "Unauthenticated access to theme data. projectId alone is insufficient without userId and ownership verification.",
+      "affected_endpoints": [
+        "GET /api/themes"
+      ],
+      "code_snippet": "export async function GET(request: NextRequest) {\n  const projectId = request.nextUrl.searchParams.get(\"projectId\");\n  const themes = await prisma.theme.findMany({",
+      "recommended_fix": "Implement authentication middleware and add userId-based ownership filtering"
+    },
+    {
+      "id": "CRITICAL-004",
+      "type": "Missing Authentication",
+      "severity": "CRITICAL",
+      "file_path": "app/api/personas/route.ts",
+      "line_numbers": [4],
+      "description": "GET endpoint for personas has no authentication. Returns persona data without verifying requesting user.",
+      "severity_justification": "Complete absence of user identification allows data breach. Any client can retrieve all personas.",
+      "affected_endpoints": [
+        "GET /api/personas"
+      ],
+      "code_snippet": "export async function GET(request: NextRequest) {\n  const projectId = request.nextUrl.searchParams.get(\"projectId\");\n  const personas = await prisma.persona.findMany({",
+      "recommended_fix": "Add authentication requirement and restrict to user's own projects"
+    },
+    {
+      "id": "CRITICAL-005",
+      "type": "Missing Authentication",
+      "severity": "CRITICAL",
+      "file_path": "app/api/opportunities/route.ts",
+      "line_numbers": [4],
+      "description": "GET endpoint for opportunities has no authentication. Any user can query opportunities without verification.",
+      "severity_justification": "Opportunities data is business-sensitive. Unauthenticated access allows competitive intelligence gathering.",
+      "affected_endpoints": [
+        "GET /api/opportunities"
+      ],
+      "code_snippet": "export async function GET(request: NextRequest) {\n  const projectId = request.nextUrl.searchParams.get(\"projectId\");\n  const opportunities = await prisma.opportunity.findMany({",
+      "recommended_fix": "Implement user authentication and ownership validation"
+    },
+    {
+      "id": "CRITICAL-006",
+      "type": "Missing Authentication",
+      "severity": "CRITICAL",
+      "file_path": "app/api/reports/route.ts",
+      "line_numbers": [4, 18],
+      "description": "GET and POST endpoints for reports lack authentication. Unauthenticated users can read/create reports.",
+      "severity_justification": "Reports contain aggregated sensitive analysis data. No auth allows unauthorized report access and creation.",
+      "affected_endpoints": [
+        "GET /api/reports",
+        "POST /api/reports"
+      ],
+      "code_snippet": "export async function GET(request: NextRequest) {\n  const projectId = request.nextUrl.searchParams.get(\"projectId\");\n  const reports = await prisma.report.findMany({",
+      "recommended_fix": "Add authentication headers validation and userId-based filtering"
+    },
+    {
+      "id": "CRITICAL-007",
+      "type": "Missing Authentication & Body Validation",
+      "severity": "CRITICAL",
+      "file_path": "app/api/chat/route.ts",
+      "line_numbers": [4, 6, 20],
+      "description": "Chat endpoint has no authentication check. Also accepts userId from request body (can be spoofed). No body validation.",
+      "severity_justification": "Users can impersonate others by sending arbitrary userId. No validation of projectId or message content. Can access other users' chat history.",
+      "affected_endpoints": [
+        "POST /api/chat"
+      ],
+      "code_snippet": "export async function POST(request: NextRequest) {\n  const { projectId, message, userId } = await request.json();\n  // ... creates messages with user-provided userId without verification",
+      "recommended_fix": "1. Extract userId from authenticated session, never from request body\n2. Validate body with chatMessageSchema\n3. Verify projectId ownership\n4. Add authentication middleware"
+    },
+    {
+      "id": "CRITICAL-008",
+      "type": "Missing Body Validation",
+      "severity": "CRITICAL",
+      "file_path": "app/api/documents/route.ts",
+      "line_numbers": [21, 26],
+      "description": "POST /api/documents accepts body directly without validation. Allows injection of arbitrary data.",
+      "severity_justification": "No validation means malformed or malicious data can be stored in database. No schema enforcement on document creation.",
+      "affected_endpoints": [
+        "POST /api/documents"
+      ],
+      "code_snippet": "export async function POST(request: NextRequest) {\n  const body = await request.json();\n  const document = await prisma.document.create({\n    data: body,  // Raw, unvalidated data",
+      "recommended_fix": "Use fileUploadSchema or documentSchema to validate body before database insert"
+    },
+    {
+      "id": "CRITICAL-009",
+      "type": "Missing Body Validation",
+      "severity": "CRITICAL",
+      "file_path": "app/api/reports/route.ts",
+      "line_numbers": [18, 20, 24],
+      "description": "POST /api/reports accepts body without validation. Allows creation of malformed reports.",
+      "severity_justification": "No schema validation permits injection attacks and data integrity violations.",
+      "affected_endpoints": [
+        "POST /api/reports"
+      ],
+      "code_snippet": "export async function POST(request: NextRequest) {\n  const { projectId, title } = await request.json();\n  // No validation that projectId and title are valid",
+      "recommended_fix": "Validate with schema before creating report in database"
+    },
+    {
+      "id": "CRITICAL-010",
+      "type": "Hardcoded Demo Credentials",
+      "severity": "CRITICAL",
+      "file_path": "app/(auth)/login/page.tsx",
+      "line_numbers": [14, 15, 26, 31, 58, 76, 109, 110],
+      "description": "Demo credentials hardcoded in login page: email='demo@example.com', password='Demo@123456'. Displayed in UI and code.",
+      "severity_justification": "Production security risk. Credentials visible in source code, network requests, and UI. Anyone with access can gain account entry.",
+      "credentials": [
+        "demo@example.com / Demo@123456"
+      ],
+      "recommended_fix": "1. Replace with environment variable demo credentials\n2. Remove credentials from signup auth check\n3. Use JWT/proper auth flow\n4. Implement environment-based demo mode\n5. Never show credentials in error messages"
+    },
+    {
+      "id": "CRITICAL-011",
+      "type": "Unsafe JSON.parse() - No Try/Catch",
+      "severity": "CRITICAL",
+      "file_path": "app/(dashboard)/reports/page.tsx",
+      "line_numbers": [50],
+      "description": "JSON.parse() called without try/catch wrapper. Malformed JSON in report.content crashes component.",
+      "severity_justification": "SyntaxError from parsing invalid JSON will crash the entire reports page, causing DoS and poor UX.",
+      "affected_function": "handleDownloadReport()",
+      "code_snippet": "const content = JSON.parse(report.content);\nconst dataStr = JSON.stringify(content, null, 2);",
+      "recommended_fix": "Wrap JSON.parse() in try/catch block with user-friendly error handling"
+    }
+  ],
+  "high_issues": [
+    {
+      "id": "HIGH-001",
+      "type": "Unsafe localStorage Access",
+      "severity": "HIGH",
+      "file_path": "lib/storage.ts",
+      "line_numbers": [50, 51, 66],
+      "description": "localStorage.getItem() and setItem() called without try/catch. SSR will crash on server-side rendering.",
+      "severity_justification": "Throws ReferenceError: localStorage is not defined when running on server. No error boundary causes app crashes.",
+      "affected_functions": [
+        "getAllData()",
+        "saveAllData()"
+      ],
+      "code_snippet": "const stored = localStorage.getItem(STORAGE_KEY);\nreturn stored ? JSON.parse(stored) : memoryStorage;",
+      "recommended_fix": "1. Wrap localStorage access in try/catch\n2. Check typeof window !== 'undefined' (already done but not in try/catch)\n3. Handle parse errors separately"
+    },
+    {
+      "id": "HIGH-002",
+      "type": "Unsafe localStorage Access",
+      "severity": "HIGH",
+      "file_path": "lib/api-client.ts",
+      "line_numbers": [14],
+      "description": "localStorage.getItem('auth_token') called without try/catch in request interceptor.",
+      "severity_justification": "Crashes every API request if localStorage is unavailable. No fallback for SSR or edge runtime.",
+      "affected_code": "Request interceptor",
+      "code_snippet": "const token = localStorage.getItem(\"auth_token\");",
+      "recommended_fix": "Wrap in try/catch and provide safe default (null)"
+    },
+    {
+      "id": "HIGH-003",
+      "type": "Unsafe localStorage Access",
+      "severity": "HIGH",
+      "file_path": "app/(auth)/login/page.tsx",
+      "line_numbers": [28],
+      "description": "localStorage.setItem() called without try/catch in handleSubmit(). Fails silently if quota exceeded or unavailable.",
+      "severity_justification": "User thinks they're logged in but session not saved. No error feedback about storage failure.",
+      "affected_function": "handleSubmit()",
+      "code_snippet": "localStorage.setItem(\"auth_user\", JSON.stringify({ email, id: \"user_123\" }));",
+      "recommended_fix": "Wrap localStorage operations in try/catch with user feedback"
+    },
+    {
+      "id": "HIGH-004",
+      "type": "Unsafe localStorage Access",
+      "severity": "HIGH",
+      "file_path": "app/(auth)/signup/page.tsx",
+      "line_numbers": [42],
+      "description": "localStorage.setItem() in signup without try/catch. Storage failure not handled or reported.",
+      "severity_justification": "Registration completes but session not stored. User redirected to dashboard without valid auth state.",
+      "affected_function": "handleSubmit()",
+      "code_snippet": "localStorage.setItem(\"auth_user\", JSON.stringify({ email, fullName, id: `user_${Date.now()}` }));",
+      "recommended_fix": "Add try/catch block with error handling and user notification"
+    },
+    {
+      "id": "HIGH-005",
+      "type": "Missing Ownership Validation",
+      "severity": "HIGH",
+      "file_path": "app/api/projects/route.ts",
+      "line_numbers": [12, 36],
+      "description": "Projects filtered by userId from header only. No verification that header value matches authenticated user.",
+      "severity_justification": "Client can spoof x-user-id header to access other users' projects. Header is not a secure auth mechanism.",
+      "affected_endpoints": [
+        "GET /api/projects",
+        "POST /api/projects"
+      ],
+      "code_snippet": "const userId = request.headers.get(\"x-user-id\");",
+      "recommended_fix": "Extract userId from JWT/session, never from custom headers. Verify token signature."
+    },
+    {
+      "id": "HIGH-006",
+      "type": "Missing Error Handling - Promise",
+      "severity": "HIGH",
+      "file_path": "app/(dashboard)/chat/page.tsx",
+      "line_numbers": [51, 62],
+      "description": "setTimeout() used instead of proper async/await for chat query. No error handling on promise chain.",
+      "severity_justification": "Errors in processChatQuery() not caught. Loading state can persist if error occurs. Poor UX and hard to debug.",
+      "affected_function": "handleSendMessage()",
+      "code_snippet": "setTimeout(() => {\n  const response = processChatQuery(messageText);\n  // ... no error handling here\n}, 800);",
+      "recommended_fix": "Use async/await with proper try/catch. Handle processChatQuery() errors."
+    },
+    {
+      "id": "HIGH-007",
+      "type": "Missing Error Handling - Promise",
+      "severity": "HIGH",
+      "file_path": "app/(dashboard)/upload/page.tsx",
+      "line_numbers": [59, 69, 74],
+      "description": "File upload uses nested setTimeout promises without error boundaries. Progress state not synchronized with actual uploads.",
+      "severity_justification": "Upload failures leave progress bar in loading state. User can't retry or know what failed.",
+      "affected_function": "handleUpload()",
+      "code_snippet": "for (let p = 0; p <= 40; p += 10) {\n  await new Promise((resolve) => setTimeout(resolve, 100));\n  setProgress(p);\n}",
+      "recommended_fix": "Replace with proper async file upload handling with error recovery"
+    },
+    {
+      "id": "HIGH-008",
+      "type": "Middleware Bypasses All Protection",
+      "severity": "HIGH",
+      "file_path": "middleware.ts",
+      "line_numbers": [5, 27],
+      "description": "Middleware has demo mode allowing all dashboard routes without authentication. demoAllowedRoutes bypass all auth checks.",
+      "severity_justification": "Production deployment with demo mode enables complete auth bypass. Any user accesses any dashboard page without login.",
+      "affected_routes": [
+        "/chat",
+        "/insights",
+        "/upload",
+        "/projects",
+        "/personas",
+        "/themes",
+        "/opportunities",
+        "/reports",
+        "/settings",
+        "/"
+      ],
+      "code_snippet": "// Demo mode: allow dashboard routes without auth\nif (demoAllowedRoutes.some(route => pathname.startsWith(route)) || pathname === \"/\") {\n  return NextResponse.next();\n}",
+      "recommended_fix": "1. Remove demo mode routes from production\n2. Implement proper session/JWT verification\n3. Use middleware to check auth status before allowing access\n4. Redirect unauthenticated users to /login"
+    }
+  ],
+  "recommendations_summary": {
+    "immediate_actions": [
+      "Remove hardcoded demo credentials from codebase",
+      "Add authentication to all /api/* endpoints",
+      "Implement ownership validation for all database queries",
+      "Add try/catch around all JSON.parse() calls",
+      "Secure localStorage access with error handling",
+      "Validate all POST request bodies with schemas"
+    ],
+    "implementation_priority": [
+      "1. Secure API routes (add auth header extraction, verify ownership)",
+      "2. Remove demo credentials (use environment variables)",
+      "3. Add environment variable validation",
+      "4. Wrap JSON.parse() in try/catch (11 instances)",
+      "5. Wrap localStorage access in try/catch (4 locations)",
+      "6. Validate all POST bodies (documents, reports, chat)",
+      "7. Fix promise handling in Chat and Upload pages"
+    ],
+    "affected_areas": {
+      "api_routes": "All 8 GET/POST endpoints need auth + validation",
+      "authentication": "Login/signup pages have hardcoded credentials",
+      "storage": "Multiple unsafe localStorage/JSON.parse() calls",
+      "middleware": "Demo mode allows unrestricted access",
+      "error_handling": "Missing promise and exception handling"
+    }
+  },
+  "severity_breakdown": {
+    "critical_by_category": {
+      "missing_authentication": 6,
+      "hardcoded_credentials": 1,
+      "missing_body_validation": 2,
+      "unsafe_json_parse": 1,
+      "missing_ownership_validation": 1
+    },
+    "high_by_category": {
+      "unsafe_localstorage": 4,
+      "missing_ownership_validation": 1,
+      "promise_handling": 2,
+      "middleware_bypass": 1
+    }
+  },
+  "files_requiring_changes": {
+    "api_routes": [
+      "app/api/chat/route.ts",
+      "app/api/documents/route.ts",
+      "app/api/insights/route.ts",
+      "app/api/opportunities/route.ts",
+      "app/api/personas/route.ts",
+      "app/api/reports/route.ts",
+      "app/api/themes/route.ts",
+      "app/api/projects/route.ts"
+    ],
+    "auth_pages": [
+      "app/(auth)/login/page.tsx",
+      "app/(auth)/signup/page.tsx"
+    ],
+    "lib_files": [
+      "lib/storage.ts",
+      "lib/api-client.ts"
+    ],
+    "dashboard_pages": [
+      "app/(dashboard)/chat/page.tsx",
+      "app/(dashboard)/upload/page.tsx",
+      "app/(dashboard)/reports/page.tsx"
+    ],
+    "middleware": [
+      "middleware.ts"
+    ]
+  }
+}
