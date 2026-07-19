@@ -1,75 +1,94 @@
-import { User } from "@supabase/supabase-js";
-import { createClient } from "./supabase";
+// Authentication using JWT tokens + custom API routes
+// No Supabase dependency
 
-export async function signUp(email: string, password: string, name: string) {
-  const supabase = createClient();
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: {
-        display_name: name,
-      },
-    },
+export interface AuthUser {
+  id: string;
+  email: string;
+  name?: string;
+  createdAt?: string;
+}
+
+export async function signUp(email: string, password: string, name: string): Promise<{ user: AuthUser }> {
+  const response = await fetch("/api/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, name }),
   });
 
-  if (error) throw new Error(error.message);
-  return data;
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Sign up failed");
+  }
+
+  return response.json();
 }
 
-export async function signIn(email: string, password: string) {
-  const supabase = createClient();
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
+export async function signIn(email: string, password: string): Promise<{ user: AuthUser }> {
+  const response = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
   });
 
-  if (error) throw new Error(error.message);
-  return data;
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Sign in failed");
+  }
+
+  return response.json();
 }
 
-export async function signOut() {
-  const supabase = createClient();
-  const { error } = await supabase.auth.signOut();
-  if (error) throw new Error(error.message);
-}
-
-export async function getSession() {
-  const supabase = createClient();
-  const {
-    data: { session },
-    error,
-  } = await supabase.auth.getSession();
-
-  if (error) throw new Error(error.message);
-  return session;
-}
-
-export async function getCurrentUser(): Promise<User | null> {
-  const supabase = createClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error) throw new Error(error.message);
-  return user;
-}
-
-export async function resetPassword(email: string) {
-  const supabase = createClient();
-  const { data, error } = await supabase.auth.resetPasswordForEmail(email);
-
-  if (error) throw new Error(error.message);
-  return data;
-}
-
-export async function updatePassword(newPassword: string) {
-  const supabase = createClient();
-  const { data, error } = await supabase.auth.updateUser({
-    password: newPassword,
+export async function signOut(): Promise<void> {
+  const response = await fetch("/api/auth/logout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
   });
 
-  if (error) throw new Error(error.message);
-  return data;
+  if (!response.ok) {
+    throw new Error("Sign out failed");
+  }
+
+  // Clear localStorage token
+  localStorage.removeItem("auth_token");
+}
+
+export async function getSession(): Promise<AuthUser | null> {
+  try {
+    // Try to get from localStorage first
+    const token = localStorage.getItem("auth_token");
+    if (token) {
+      const parsed = JSON.parse(token);
+      return parsed;
+    }
+
+    // If no localStorage token, check if auth cookie exists via a lightweight endpoint
+    return null;
+  } catch (error) {
+    console.error("Error getting session:", error);
+    return null;
+  }
+}
+
+export async function getCurrentUser(): Promise<AuthUser | null> {
+  try {
+    const token = localStorage.getItem("auth_token");
+    if (token) {
+      const parsed = JSON.parse(token);
+      return parsed;
+    }
+    return null;
+  } catch (error) {
+    console.error("Error getting current user:", error);
+    return null;
+  }
+}
+
+export async function resetPassword(_email: string): Promise<void> {
+  // TODO: Implement password reset via email
+  throw new Error("Password reset not yet implemented");
+}
+
+export async function updatePassword(_newPassword: string): Promise<void> {
+  // TODO: Implement password update
+  throw new Error("Password update not yet implemented");
 }

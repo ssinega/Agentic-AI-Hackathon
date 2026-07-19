@@ -47,12 +47,22 @@ export default function SignupPage() {
       });
 
       if (!response.ok) {
-        const data = await response.json();
-        setError(data.error || "Signup failed");
+        try {
+          const data = await response.json();
+          setError(data.error || "Signup failed");
+        } catch {
+          setError("Signup failed: Invalid response from server");
+        }
         return;
       }
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        setError("Failed to parse server response");
+        return;
+      }
       
       // Securely store auth token
       try {
@@ -66,7 +76,8 @@ export default function SignupPage() {
         console.error("Failed to store user session:", storageError);
       }
       
-      router.push("/dashboard");
+      router.push("/");
+
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {

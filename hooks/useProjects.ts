@@ -1,67 +1,142 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { ApiClient } from "@/lib/api-client";
-import { Project } from "@/types";
+import { useState, useCallback, useEffect } from "react";
+import { useAuth } from "@/hooks/useAuth";
 
 export function useProjects() {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const { user } = useAuth();
+  const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchProjects = useCallback(async () => {
+    if (!user) return;
     setLoading(true);
     setError(null);
     try {
-      const response = await ApiClient.get<Project[]>("/projects");
-      if (response.success && response.data) {
-        setProjects(response.data);
-      } else {
-        setError(response.error || "Failed to fetch projects");
+      const response = await fetch("/api/projects", {
+        headers: { "x-user-id": user.id },
+      });
+      if (!response.ok) {
+        throw new Error("Failed to fetch projects");
       }
+      const data = await response.json();
+      setProjects(data.projects || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      const errorMsg = err instanceof Error ? err.message : "An error occurred";
+      setError(errorMsg);
+      console.error("Error fetching projects:", errorMsg);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
-  const createProject = useCallback(async (name: string, description?: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await ApiClient.post<Project>("/projects", { name, description });
-      if (response.success && response.data) {
-        setProjects((prev) => [...prev, response.data!]);
-        return response.data;
-      } else {
-        setError(response.error || "Failed to create project");
+  const createProject = useCallback(
+    async (name: string, description?: string) => {
+      if (!user) return null;
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/projects", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-id": user.id,
+          },
+          body: JSON.stringify({ name, description }),
+        });
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || "Failed to create project");
+        }
+        const data = await response.json();
+        setProjects((prev) => [...prev, data.project]);
+        return data.project;
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : "An error occurred";
+        setError(errorMsg);
+        console.error("Error creating project:", errorMsg);
         return null;
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [user]
+  );
 
-  const deleteProject = useCallback(async (id: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await ApiClient.delete(`/projects/${id}`);
-      if (response.success) {
-        setProjects((prev) => prev.filter((p) => p.id !== id));
-      } else {
-        setError(response.error || "Failed to delete project");
+  const updateProject = useCallback(
+    async (id: string, name?: string, description?: string) => {
+      if (!user) return null;
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/projects", {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-id": user.id,
+          },
+          body: JSON.stringify({ id, name, description }),
+        });
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || "Failed to update project");
+        }
+        const data = await response.json();
+        setProjects((prev) =>
+          prev.map((p) => (p.id === id ? data.project : p))
+        );
+        return data.project;
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : "An error occurred";
+        setError(errorMsg);
+        console.error("Error updating project:", errorMsg);
+        return null;
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
-    } finally {
-      setLoading(false);
+    },
+    [user]
+  );
+
+  const deleteProject = useCallback(
+    async (id: string) => {
+      if (!user) return false;
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/projects", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-id": user.id,
+          },
+          body: JSON.stringify({ id }),
+        });
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || "Failed to delete project");
+        }
+        setProjects((prev) => prev.filter((p) => p.id !== id));
+        return true;
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : "An error occurred";
+        setError(errorMsg);
+        console.error("Error deleting project:", errorMsg);
+        return false;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [user]
+  );
+
+  // Auto-fetch on mount if user is available
+  useEffect(() => {
+    if (user) {
+      fetchProjects();
     }
-  }, []);
+  }, [user, fetchProjects]);
 
   return {
     projects,
@@ -69,6 +144,7 @@ export function useProjects() {
     error,
     fetchProjects,
     createProject,
+    updateProject,
     deleteProject,
   };
 }

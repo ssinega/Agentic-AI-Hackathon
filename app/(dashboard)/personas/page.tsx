@@ -1,19 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { Plus, Edit2, Trash2 } from "lucide-react";
-import { getPersonas } from "@/lib/storage";
+import { Plus, Edit2, Trash2, AlertCircle } from "lucide-react";
+import { usePersonas } from "@/hooks/usePersonas";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function PersonasPage() {
-  const [personas, setPersonas] = useState<any[]>([]);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user, loading: authLoading } = useAuth();
+  const projectId = searchParams.get("projectId");
+  
+  // Redirect to projects if no projectId
+  useEffect(() => {
+    if (!authLoading && !projectId) {
+      router.push("/projects");
+    }
+  }, [authLoading, projectId, router]);
+
+  const { personas, loading, error } = usePersonas(projectId || undefined);
 
   useEffect(() => {
-    const stored = getPersonas();
-    setPersonas(stored);
-  }, []);
+    if (!authLoading && !user) {
+      router.push("/login");
+    }
+  }, [user, authLoading, router]);
 
   const typeColors: Record<string, string> = {
     primary: "bg-indigo-500/10 text-indigo-300 border-indigo-500/30",
@@ -26,6 +41,27 @@ export default function PersonasPage() {
     medium: "bg-yellow-500/10 text-yellow-300 border-yellow-500/30",
     small: "bg-orange-500/10 text-orange-300 border-orange-500/30",
   };
+
+  if (loading) {
+    return <div className="p-8 text-white">Loading...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-6 bg-red-500/10 border border-red-500/30">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-red-400" />
+            <p className="text-red-400">{error}</p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  const primaryCount = personas.filter((p) => p.type === "primary" || p.type === "PRIMARY").length;
+  const secondaryCount = personas.filter((p) => p.type === "secondary" || p.type === "SECONDARY").length;
+
 
   return (
     <div className="space-y-6">
@@ -47,21 +83,31 @@ export default function PersonasPage() {
         </Card>
         <Card className="p-4 bg-slate-800/50 border-slate-700/50">
           <p className="text-slate-400 text-sm">Primary</p>
-          <p className="text-3xl font-bold text-indigo-400 mt-2">
-            {personas.filter((p) => p.type === "primary").length}
-          </p>
+          <p className="text-3xl font-bold text-indigo-400 mt-2">{primaryCount}</p>
         </Card>
         <Card className="p-4 bg-slate-800/50 border-slate-700/50">
           <p className="text-slate-400 text-sm">Secondary</p>
-          <p className="text-3xl font-bold text-purple-400 mt-2">
-            {personas.filter((p) => p.type === "secondary").length}
-          </p>
+          <p className="text-3xl font-bold text-purple-400 mt-2">{secondaryCount}</p>
         </Card>
       </div>
 
+      {/* Error Message */}
+      {error && (
+        <Card className="p-4 bg-red-500/10 border border-red-500/30">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-400" />
+            <p className="text-red-400 text-sm">{error}</p>
+          </div>
+        </Card>
+      )}
+
       {/* Personas Grid */}
       <div className="space-y-6">
-        {personas.length > 0 ? (
+        {loading && personas.length === 0 ? (
+          <Card className="p-12 bg-slate-800/50 border-slate-700/50 text-center">
+            <p className="text-slate-400">Loading personas...</p>
+          </Card>
+        ) : personas.length > 0 ? (
           personas.map((persona) => (
             <Card
               key={persona.id}
@@ -73,20 +119,22 @@ export default function PersonasPage() {
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <Badge
                       variant="outline"
-                      className={`text-xs border ${typeColors[persona.type] || ""}`}
+                      className={`text-xs border ${typeColors[(persona.type || "primary").toLowerCase()] || typeColors["primary"]}`}
                     >
-                      {persona.type
-                        ? persona.type.charAt(0).toUpperCase() + persona.type.slice(1)
-                        : "Unknown"}
+                      {(persona.type || "primary")
+                        .charAt(0)
+                        .toUpperCase() + (persona.type || "primary").slice(1)}
                     </Badge>
-                    <Badge
-                      variant="outline"
-                      className={`text-xs border ${sizeColors[persona.size] || ""}`}
-                    >
-                      {persona.size
-                        ? persona.size.charAt(0).toUpperCase() + persona.size.slice(1)
-                        : "Unknown"}
-                    </Badge>
+                    {persona.size && (
+                      <Badge
+                        variant="outline"
+                        className={`text-xs border ${sizeColors[(persona.size || "medium").toLowerCase()] || sizeColors["medium"]}`}
+                      >
+                        {(persona.size || "medium")
+                          .charAt(0)
+                          .toUpperCase() + (persona.size || "medium").slice(1)}
+                      </Badge>
+                    )}
                   </div>
                   {persona.role && (
                     <p className="text-sm text-slate-400 mt-2">{persona.role}</p>
@@ -102,7 +150,7 @@ export default function PersonasPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {persona.goals && (
                   <div>
                     <h4 className="text-sm font-semibold text-slate-300 mb-2">Goals</h4>
@@ -143,9 +191,7 @@ export default function PersonasPage() {
               </div>
               <div>
                 <p className="text-slate-400 text-sm mb-1">Primary Personas</p>
-                <p className="text-white font-semibold">
-                  {personas.filter((p) => p.type === "primary").length}
-                </p>
+                <p className="text-white font-semibold">{primaryCount}</p>
               </div>
             </div>
             <div className="space-y-3">

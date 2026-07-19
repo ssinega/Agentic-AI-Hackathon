@@ -59,11 +59,11 @@ export function Header() {
           {user && (
             <div className="flex items-center space-x-3">
               <div className="text-right">
-                <p className="text-sm font-medium">{user.user_metadata?.name || user.email}</p>
+                <p className="text-sm font-medium">{user.name || user.email}</p>
                 <p className="text-xs text-muted-foreground">{user.email}</p>
               </div>
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center text-white text-sm font-semibold">
-                {user.user_metadata?.name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase()}
+                {user.name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase()}
               </div>
             </div>
           )}

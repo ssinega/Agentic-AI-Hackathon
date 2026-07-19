@@ -1,15 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { ChatInterface } from "@/components/chat/ChatInterface";
-import { Send, Paperclip, Settings } from "lucide-react";
-import { processChatQuery } from "@/lib/chat-service";
+import { Send, Paperclip, Settings, AlertCircle } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function ChatPage() {
   type Message = { id: number; role: "user" | "assistant"; content: string };
+
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user, loading: authLoading } = useAuth();
+  const projectId = searchParams.get("projectId");
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -22,6 +28,8 @@ export default function ChatPage() {
 
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const messageIdRef = useRef(2);
 
   const suggestedPrompts = [
     "What are the main pain points identified?",
@@ -32,13 +40,21 @@ export default function ChatPage() {
     "Give me a summary of the analysis",
   ];
 
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/login");
+    }
+  }, [user, authLoading, router]);
+
   const handleSendMessage = async (text?: string) => {
     const messageText = text || inputValue.trim();
-    if (!messageText) return;
+    if (!messageText || !projectId) return;
 
     // Add user message
+    const userMessageId = messageIdRef.current;
+    messageIdRef.current += 1;
     const newUserMessage = {
-      id: messages.length + 1,
+      id: userMessageId,
       role: "user" as const,
       content: messageText,
     };
@@ -46,46 +62,71 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, newUserMessage]);
     setInputValue("");
     setIsLoading(true);
+    setError(null);
 
-    // Process query and get response with proper error handling
     try {
-      const timeoutPromise = new Promise<{ content: string }>((_, reject) =>
-        setTimeout(() => reject(new Error("Chat timeout")), 10000)
-      );
-
-      const responsePromise = new Promise<{ content: string }>((resolve) => {
-        setTimeout(() => {
-          try {
-            const response = processChatQuery(messageText);
-            resolve(response);
-          } catch (error) {
-            console.error("Error processing chat query:", error);
-            resolve({ content: "Sorry, I encountered an error processing your request." });
-          }
-        }, 800);
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": user?.id || "",
+        },
+        body: JSON.stringify({
+          projectId,
+          message: messageText,
+        }),
       });
 
-      const response = await Promise.race([responsePromise, timeoutPromise]);
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || "Failed to get response");
+      }
 
+      const data = await response.json();
+
+      const assistantMessageId = messageIdRef.current;
+      messageIdRef.current += 1;
       const newAssistantMessage = {
-        id: messages.length + 2,
+        id: assistantMessageId,
         role: "assistant" as const,
-        content: response.content,
+        content: data.response || "I couldn't generate a response.",
       };
 
       setMessages((prev) => [...prev, newAssistantMessage]);
-    } catch (error) {
-      console.error("Chat error:", error);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
+      console.error("Chat error:", errorMsg);
+      setError(errorMsg);
+
+      const assistantMessageId = messageIdRef.current;
+      messageIdRef.current += 1;
       const errorMessage = {
-        id: messages.length + 2,
+        id: assistantMessageId,
         role: "assistant" as const,
-        content: "Sorry, I couldn't process your message. Please try again.",
+        content: `Sorry, I encountered an error: ${errorMsg}. Please try again.`,
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
   };
+
+  if (authLoading) {
+    return <div className="p-8 text-white">Loading...</div>;
+  }
+
+  if (!projectId) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-6 bg-red-500/10 border border-red-500/30">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-red-400" />
+            <p className="text-red-400">Please select a project to use chat</p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 h-full">
@@ -103,13 +144,26 @@ export default function ChatPage() {
         </Button>
       </div>
 
+      {error && (
+        <Card className="p-4 bg-red-500/10 border border-red-500/30">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-400" />
+            <p className="text-red-400 text-sm">{error}</p>
+            <button
+              onClick={() => setError(null)}
+              className="ml-auto text-red-400 hover:text-red-300"
+            >
+              ✕
+            </button>
+          </div>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-full">
         {/* Chat History Sidebar */}
         <div className="lg:col-span-1">
           <Card className="p-4 bg-slate-800/50 border-slate-700/50 h-full">
-            <h3 className="text-sm font-semibold text-white mb-4">
-              Conversation History
-            </h3>
+            <h3 className="text-sm font-semibold text-white mb-4">Conversation History</h3>
             <div className="space-y-2 max-h-96 overflow-y-auto">
               {[1, 2, 3, 4, 5].map((i) => (
                 <Button
@@ -136,9 +190,7 @@ export default function ChatPage() {
                 <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center mx-auto mb-4">
                   <span className="text-white font-bold">AI</span>
                 </div>
-                <h2 className="text-xl font-semibold text-white mb-2">
-                  Start a Conversation
-                </h2>
+                <h2 className="text-xl font-semibold text-white mb-2">Start a Conversation</h2>
                 <p className="text-slate-400 text-sm mb-6">
                   Ask me questions about your research, insights, and data
                 </p>
@@ -153,9 +205,7 @@ export default function ChatPage() {
           {/* Suggested Prompts */}
           {messages.length === 1 && (
             <Card className="p-6 bg-slate-800/50 border-slate-700/50 mb-4">
-              <h3 className="text-sm font-semibold text-white mb-3">
-                Suggested Prompts
-              </h3>
+              <h3 className="text-sm font-semibold text-white mb-3">Suggested Prompts</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {suggestedPrompts.map((prompt, index) => (
                   <Button
@@ -163,6 +213,7 @@ export default function ChatPage() {
                     variant="outline"
                     className="justify-start h-auto py-2 px-3 border-slate-600 text-slate-300 hover:text-white text-sm text-left"
                     onClick={() => handleSendMessage(prompt)}
+                    disabled={isLoading}
                   >
                     {prompt}
                   </Button>
@@ -178,6 +229,7 @@ export default function ChatPage() {
                 variant="ghost"
                 size="icon"
                 className="text-slate-400 hover:text-white shrink-0"
+                disabled={isLoading}
               >
                 <Paperclip className="w-4 h-4" />
               </Button>
@@ -197,7 +249,7 @@ export default function ChatPage() {
               <Button
                 onClick={() => handleSendMessage()}
                 disabled={isLoading || !inputValue.trim()}
-                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 shrink-0"
+                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 shrink-0 disabled:opacity-50"
               >
                 {isLoading ? (
                   <span className="animate-spin">⏳</span>

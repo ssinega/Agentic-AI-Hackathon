@@ -23,6 +23,8 @@ export default function LoginPage() {
     setError("");
 
     try {
+      console.log("Login attempt with:", { email, password });
+      
       // Call authentication API
       const response = await fetch("/api/auth/login", {
         method: "POST",
@@ -30,13 +32,28 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
 
+      console.log("Login response status:", response.status);
+
       if (!response.ok) {
-        const data = await response.json();
-        setError(data.error || "Authentication failed");
+        try {
+          const data = await response.json();
+          console.error("Login error response:", data);
+          setError(data.error || "Authentication failed");
+        } catch {
+          setError("Authentication failed: Invalid response from server");
+        }
         return;
       }
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        setError("Failed to parse server response");
+        return;
+      }
+      
+      console.log("Login successful, user data:", data.user);
       
       // Securely store auth token in httpOnly cookie via API response
       try {
@@ -45,13 +62,17 @@ export default function LoginPage() {
           id: data.user.id,
           createdAt: new Date().toISOString()
         }));
+        console.log("Auth user saved to localStorage");
       } catch (storageError) {
         console.error("Failed to store user session:", storageError);
         // Continue anyway, auth is still valid via cookies
       }
       
-      router.push("/dashboard");
+      console.log("Redirecting to dashboard...");
+      router.push("/");
+
     } catch (err) {
+      console.error("Login error:", err);
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setIsLoading(false);

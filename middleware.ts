@@ -2,38 +2,28 @@ import { type NextRequest, NextResponse } from "next/server";
 
 const publicRoutes = ["/login", "/signup"];
 
-const protectedRoutes = [
-  "/dashboard",
-  "/projects",
-  "/chat",
-  "/insights",
-  "/upload",
-  "/personas",
-  "/themes",
-  "/opportunities",
-  "/reports",
-  "/settings",
-];
-
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow public routes
-  if (publicRoutes.includes(pathname) || pathname === "/") {
+  // Allow public routes (login, signup)
+  if (publicRoutes.includes(pathname)) {
     return NextResponse.next();
   }
 
-  // Check for authentication on protected routes
-  if (protectedRoutes.some(route => pathname.startsWith(route))) {
-    // Get auth token from cookies or localStorage via headers
-    const authHeader = request.headers.get("authorization");
-    const authCookie = request.cookies.get("auth_token");
-    
-    if (!authHeader && !authCookie) {
-      // Redirect to login if not authenticated
-      const loginUrl = new URL("/login", request.url);
-      return NextResponse.redirect(loginUrl);
+  // Root path and all other protected routes need auth
+  // Get auth token from cookies or check localStorage (client-side will handle localStorage)
+  const authCookie = request.cookies.get("auth_token");
+  
+  // If no auth cookie, redirect to login for protected routes
+  if (!authCookie || !authCookie.value) {
+    // Allow root to load (client-side auth check will redirect to login if needed)
+    if (pathname === "/") {
+      return NextResponse.next();
     }
+    
+    console.log(`No auth cookie found for path ${pathname}, redirecting to login`);
+    const loginUrl = new URL("/login", request.url);
+    return NextResponse.redirect(loginUrl);
   }
 
   return NextResponse.next();
@@ -51,3 +41,4 @@ export const config = {
     "/((?!api|_next/static|_next/image|favicon.ico).*)",
   ],
 };
+

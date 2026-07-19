@@ -1,39 +1,134 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
-import { BarChart, Users, FileText, TrendingUp, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { BarChart, Users, FileText, TrendingUp, AlertCircle, LogOut } from "lucide-react";
 import { getDataSummary } from "@/lib/mock-data-generator";
 
+export const dynamic = "force-dynamic";
+
+
+
+interface AuthUser {
+  email: string;
+  id: string;
+  createdAt: string;
+}
+
 export default function DashboardPage() {
+  const router = useRouter();
   const [stats, setStats] = useState<any[]>([]);
   const [dataSummary, setDataSummary] = useState<any>(null);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
 
   useEffect(() => {
-    const summary = getDataSummary();
-    setDataSummary(summary);
+    // Check if user is authenticated
+    const checkAuth = () => {
+      try {
+        const storedUser = localStorage.getItem("auth_user");
+        if (!storedUser) {
+          // Not logged in, redirect to login page
+          router.push("/login");
+          return;
+        }
+        const user = JSON.parse(storedUser) as AuthUser;
+        setAuthUser(user);
+      } catch (error) {
+        console.error("Error checking auth:", error);
+        router.push("/login");
+      }
+    };
 
-    const statsList = [
-      { icon: FileText, label: "Documents", value: summary.documents.toString(), trend: "+0 today" },
-      { icon: BarChart, label: "Insights", value: summary.insights.toString(), trend: summary.insights > 0 ? `+${summary.insights} identified` : "0 yet" },
-      { icon: Users, label: "Personas", value: summary.personas.toString(), trend: summary.personas > 0 ? "Generated" : "None yet" },
-      { icon: TrendingUp, label: "Opportunities", value: summary.opportunities.toString(), trend: summary.opportunities > 0 ? `+${summary.opportunities} found` : "0 yet" },
-    ];
+    checkAuth();
+  }, [router]);
 
-    setStats(statsList);
-  }, []);
+  useEffect(() => {
+    // Load dashboard data
+    if (authUser) {
+      const summary = getDataSummary();
+      setDataSummary(summary);
+
+      const statsList = [
+        { icon: FileText, label: "Documents", value: summary.documents.toString(), trend: "+0 today" },
+        { icon: BarChart, label: "Insights", value: summary.insights.toString(), trend: summary.insights > 0 ? `+${summary.insights} identified` : "0 yet" },
+        { icon: Users, label: "Personas", value: summary.personas.toString(), trend: summary.personas > 0 ? "Generated" : "None yet" },
+        { icon: TrendingUp, label: "Opportunities", value: summary.opportunities.toString(), trend: summary.opportunities > 0 ? `+${summary.opportunities} found` : "0 yet" },
+      ];
+
+      setStats(statsList);
+      setIsLoading(false);
+    }
+  }, [authUser]);
+
+  const handleLogout = async () => {
+    try {
+      console.log("Logging out...");
+      
+      // Call logout API to clear auth cookie
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      // Clear localStorage
+      localStorage.removeItem("auth_user");
+      console.log("User logged out successfully");
+      
+      // Redirect to login
+      router.push("/login");
+    } catch (error) {
+      console.error("Error logging out:", error);
+      // Still redirect even if there's an error
+      router.push("/login");
+    }
+  };
+
+  // Show loading state while checking auth
+  if (isLoading || !authUser) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-white text-center">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 mb-4 animate-pulse">
+            <div className="w-6 h-6 bg-white rounded-full"></div>
+          </div>
+          <p className="text-lg font-semibold">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!dataSummary) {
-    return <div className="text-white">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-white">Loading...</div>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-white">Dashboard</h1>
-        <p className="text-slate-400 mt-1">Welcome back! Here's your research overview.</p>
+      {/* Welcome Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-white">
+            Welcome, {authUser.email.split("@")[0]}!
+          </h1>
+          <p className="text-slate-400 mt-1">Here's your research overview and recent activity.</p>
+        </div>
+        <Button
+          onClick={handleLogout}
+          className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4"
+        >
+          <LogOut className="w-4 h-4" />
+          Logout
+        </Button>
       </div>
 
+      {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat) => {
           const Icon = stat.icon;
@@ -52,6 +147,7 @@ export default function DashboardPage() {
         })}
       </div>
 
+      {/* Data Overview & Status */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2 p-6 bg-slate-800/50 border-slate-700/50 backdrop-blur-sm">
           <h2 className="text-lg font-semibold text-white mb-4">Data Overview</h2>
@@ -120,6 +216,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
+      {/* Get Started Alert */}
       {dataSummary.documents === 0 && (
         <Card className="p-6 bg-indigo-500/10 border-indigo-500/30 backdrop-blur-sm">
           <div className="flex items-center gap-3">
@@ -131,6 +228,13 @@ export default function DashboardPage() {
           </div>
         </Card>
       )}
+
+      {/* User Session Info */}
+      <Card className="p-4 bg-slate-800/30 border-slate-700/30 backdrop-blur-sm">
+        <p className="text-xs text-slate-500">
+          Logged in as: <span className="text-slate-300 font-semibold">{authUser.email}</span>
+        </p>
+      </Card>
     </div>
   );
 }

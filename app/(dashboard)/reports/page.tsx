@@ -1,53 +1,43 @@
 "use client";
 
 import { useEffect, useState } from "react";
+
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { Plus, Download, Eye, Trash2 } from "lucide-react";
-import { getReports, addReport } from "@/lib/storage";
-import { getDataSummary } from "@/lib/mock-data-generator";
+import { Plus, Download, Eye, Trash2, AlertCircle, Loader } from "lucide-react";
+import { useReports } from "@/hooks/useReports";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function ReportsPage() {
-  const [reports, setReports] = useState<any[]>([]);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user, loading: authLoading } = useAuth();
+  const projectId = searchParams.get("projectId");
+  
+  // Redirect to projects if no projectId
+  useEffect(() => {
+    if (!authLoading && !projectId) {
+      router.push("/projects");
+    }
+  }, [authLoading, projectId, router]);
+
+  const { reports, generating, loading, error, generateReport, deleteReport } = useReports(projectId || undefined);
+
   const [showPreview, setShowPreview] = useState<string | null>(null);
 
   useEffect(() => {
-    const stored = getReports();
-    setReports(stored);
-  }, []);
-
-  const handleGenerateReport = () => {
-    try {
-      const summary = getDataSummary();
-
-      const reportContent = {
-        title: `Research Analysis Report - ${new Date().toLocaleDateString()}`,
-        generatedAt: new Date().toISOString(),
-        summary: {
-          totalDocuments: summary.documents,
-          totalInsights: summary.insights,
-          totalPersonas: summary.personas,
-          totalThemes: summary.themes,
-          totalOpportunities: summary.opportunities,
-        },
-        description: "Comprehensive analysis of customer research data with insights, personas, themes, and opportunities.",
-      };
-
-      const newReport = addReport({
-        projectId: "default",
-        title: reportContent.title,
-        generatedAt: new Date(),
-        createdAt: new Date(),
-        content: JSON.stringify(reportContent, null, 2),
-        format: "json",
-      });
-
-      setReports((prev) => [newReport, ...prev]);
-    } catch (error) {
-      console.error("Error generating report:", error);
+    if (!authLoading && !user) {
+      router.push("/login");
     }
+  }, [user, authLoading, router]);
+
+
+  const handleGenerateReport = async () => {
+    await generateReport();
   };
+
 
   const handleDownloadReport = (report: any) => {
     try {
@@ -58,22 +48,40 @@ export default function ReportsPage() {
       } catch {
         dataStr = report.content;
       }
-      
+
       const dataBlob = new Blob([dataStr], { type: "application/json" });
       const url = URL.createObjectURL(dataBlob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `report-${new Date().getTime()}.json`;
+      link.download = `report-${report.id}-${new Date().getTime()}.json`;
       link.click();
       URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Error downloading report:", error);
+    } catch (err) {
+      console.error("Error downloading report:", err);
+      alert("Failed to download report");
     }
   };
 
-  const handleDeleteReport = (reportId: string) => {
-    setReports((prev) => prev.filter((r) => r.id !== reportId));
-  };
+  if (loading) {
+    return <div className="p-8 text-white">Loading...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-6 bg-red-500/10 border border-red-500/30">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-red-400" />
+            <p className="text-red-400">{error}</p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  const thisMonthReports = reports.filter(
+    (r) => new Date(r.createdAt).getMonth() === new Date().getMonth()
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -84,10 +92,20 @@ export default function ReportsPage() {
         </div>
         <Button
           onClick={handleGenerateReport}
-          className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+          disabled={generating}
+          className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50"
         >
-          <Plus className="w-4 h-4 mr-2" />
-          Generate Report
+          {generating ? (
+            <>
+              <Loader className="w-4 h-4 mr-2 animate-spin" />
+              Generating...
+            </>
+          ) : (
+            <>
+              <Plus className="w-4 h-4 mr-2" />
+              Generate Report
+            </>
+          )}
         </Button>
       </div>
 
@@ -98,12 +116,7 @@ export default function ReportsPage() {
         </Card>
         <Card className="p-4 bg-slate-800/50 border-slate-700/50">
           <p className="text-slate-400 text-sm">This Month</p>
-          <p className="text-3xl font-bold text-indigo-400 mt-2">
-            {reports.filter(
-              (r) =>
-                new Date(r.createdAt).getMonth() === new Date().getMonth()
-            ).length}
-          </p>
+          <p className="text-3xl font-bold text-indigo-400 mt-2">{thisMonthReports}</p>
         </Card>
         <Card className="p-4 bg-slate-800/50 border-slate-700/50">
           <p className="text-slate-400 text-sm">Last Generated</p>
@@ -114,6 +127,16 @@ export default function ReportsPage() {
           </p>
         </Card>
       </div>
+
+      {/* Error Message */}
+      {error && (
+        <Card className="p-4 bg-red-500/10 border border-red-500/30">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-400" />
+            <p className="text-red-400 text-sm">{error}</p>
+          </div>
+        </Card>
+      )}
 
       {/* Report Preview Modal */}
       {showPreview && (
@@ -137,7 +160,11 @@ export default function ReportsPage() {
 
       {/* Reports List */}
       <div className="space-y-4">
-        {reports.length > 0 ? (
+        {loading && reports.length === 0 ? (
+          <Card className="p-12 bg-slate-800/50 border-slate-700/50 text-center">
+            <p className="text-slate-400">Loading reports...</p>
+          </Card>
+        ) : reports.length > 0 ? (
           reports.map((report) => (
             <Card
               key={report.id}
@@ -151,10 +178,10 @@ export default function ReportsPage() {
                   </p>
                   <div className="flex items-center gap-2 mt-3">
                     <Badge variant="outline" className="text-xs">
-                      JSON
+                      {report.format ? report.format.toUpperCase() : "JSON"}
                     </Badge>
                     <span className="text-xs text-slate-500">
-                      {(report.content.length / 1024).toFixed(1)} KB
+                      {report.status ? `Status: ${report.status}` : "Ready"}
                     </span>
                   </div>
                 </div>
@@ -178,7 +205,7 @@ export default function ReportsPage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleDeleteReport(report.id)}
+                    onClick={() => deleteReport(report.id)}
                     className="text-slate-400 hover:text-red-400"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -192,10 +219,20 @@ export default function ReportsPage() {
             <p className="text-slate-400 mb-4">No reports generated yet</p>
             <Button
               onClick={handleGenerateReport}
-              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+              disabled={generating}
+              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              Generate Your First Report
+              {generating ? (
+                <>
+                  <Loader className="w-4 h-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Generate Your First Report
+                </>
+              )}
             </Button>
           </Card>
         )}

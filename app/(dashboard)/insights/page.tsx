@@ -1,41 +1,66 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Search, Download } from "lucide-react";
-import { getInsights } from "@/lib/storage";
+import { Search, Download, AlertCircle } from "lucide-react";
+import { useInsights } from "@/hooks/useInsights";
+import { useAuth } from "@/hooks/useAuth";
 import { InsightType, Sentiment } from "@/types";
 
 export default function InsightsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user, loading: authLoading } = useAuth();
+  const projectId = searchParams.get("projectId");
+  
+  // Redirect to projects if no projectId
+  useEffect(() => {
+    if (!authLoading && !projectId) {
+      router.push("/projects");
+    }
+  }, [authLoading, projectId, router]);
+
+  const { insights, loading, error } = useInsights(projectId || undefined);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [sortBy, setSortBy] = useState("recent");
-  const [insights, setInsights] = useState<any[]>([]);
 
   useEffect(() => {
-    const stored = getInsights();
-    setInsights(stored);
-  }, []);
+    if (!authLoading && !user) {
+      router.push("/login");
+    }
+  }, [user, authLoading, router]);
 
-  const filteredInsights = insights
-    .filter((insight) => {
-      const matchesSearch = insight.content
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase());
-      const matchesFilter =
-        filterType === "all" ||
-        insight.type.replace(/_/g, " ").toLowerCase() ===
-          filterType.toLowerCase();
-      return matchesSearch && matchesFilter;
-    })
-    .sort((a, b) => {
-      if (sortBy === "frequency") return b.frequency - a.frequency;
-      if (sortBy === "sentiment") return (b.confidence || 0) - (a.confidence || 0);
-      return 0;
-    });
+
+  const filteredInsights = useMemo(() => {
+    let result = insights
+      .filter((insight) => {
+        const matchesSearch = insight.content
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase());
+        const matchesFilter =
+          filterType === "all" ||
+          insight.type.replace(/_/g, " ").toLowerCase() ===
+            filterType.toLowerCase();
+        return matchesSearch && matchesFilter;
+      });
+
+    // Sort
+    if (sortBy === "frequency") {
+      result = result.sort((a, b) => (b.frequency || 0) - (a.frequency || 0));
+    } else if (sortBy === "sentiment") {
+      result = result.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+    } else {
+      result = result.sort((a, b) => new Date(b.extractedAt).getTime() - new Date(a.extractedAt).getTime());
+    }
+
+    return result;
+  }, [insights, searchTerm, filterType, sortBy]);
 
   const getSentimentColor = (sentiment: string) => {
     switch (sentiment) {
@@ -57,6 +82,22 @@ export default function InsightsPage() {
         .join(" ")
     ),
   ];
+  if (authLoading) {
+    return <div className="p-8 text-white">Loading...</div>;
+  }
+
+  if (!projectId) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-6 bg-red-500/10 border border-red-500/30">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-red-400" />
+            <p className="text-red-400">Please select a project to view insights</p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   const positiveCount = insights.filter((i) => i.sentiment === Sentiment.POSITIVE)
     .length;
@@ -64,6 +105,10 @@ export default function InsightsPage() {
     .length;
   const neutralCount = insights.filter((i) => i.sentiment === Sentiment.NEUTRAL)
     .length;
+
+  if (authLoading) {
+    return <div className="p-8 text-white">Loading...</div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -77,7 +122,7 @@ export default function InsightsPage() {
         <Card className="p-6 bg-slate-800/50 border-slate-700/50">
           <p className="text-slate-400 text-sm">Total Insights</p>
           <p className="text-3xl font-bold text-white mt-2">{insights.length}</p>
-          <p className="text-xs text-indigo-400 mt-2">{insights.length > 0 ? "+All" : "Upload files"}</p>
+          <p className="text-xs text-indigo-400 mt-2">{insights.length > 0 ? "Real data" : "Upload files"}</p>
         </Card>
         <Card className="p-6 bg-slate-800/50 border-slate-700/50">
           <p className="text-slate-400 text-sm">Positive</p>
@@ -95,6 +140,16 @@ export default function InsightsPage() {
           <p className="text-xs text-slate-500 mt-2">Needs attention</p>
         </Card>
       </div>
+
+      {/* Error Message */}
+      {error && (
+        <Card className="p-4 bg-red-500/10 border border-red-500/30">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-400" />
+            <p className="text-red-400 text-sm">{error}</p>
+          </div>
+        </Card>
+      )}
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -168,27 +223,29 @@ export default function InsightsPage() {
 
           {/* Insights List */}
           <div className="space-y-3">
-            {filteredInsights.length > 0 ? (
+            {loading && insights.length === 0 ? (
+              <Card className="p-12 bg-slate-800/50 border-slate-700/50 text-center">
+                <p className="text-slate-400">Loading insights...</p>
+              </Card>
+            ) : filteredInsights.length > 0 ? (
               filteredInsights.map((insight) => (
                 <Card
                   key={insight.id}
-                  className="p-4 bg-slate-800/50 border-slate-700/50 hover:border-indigo-500/50 transition"
+                  className="p-4 bg-slate-800/50 border-slate-700/50 hover:border-indigo-500/50 transition cursor-pointer"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <p className="text-white font-medium">{insight.content}</p>
                       <div className="flex items-center gap-2 mt-3 flex-wrap">
                         <Badge variant="outline" className="text-xs">
-                        <Badge variant="outline" className="text-xs">
                           {insight.type
                             .split("_")
                             .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
                             .join(" ")}
                         </Badge>
-                        </Badge>
                         <Badge
                           variant="outline"
-                          className={`text-xs border ${getSentimentColor(insight.sentiment)}`}
+                          className={`text-xs border ${getSentimentColor(insight.sentiment || "neutral")}`}
                         >
                           {(insight.sentiment || "neutral")
                             .charAt(0)
@@ -219,13 +276,6 @@ export default function InsightsPage() {
               </Card>
             )}
           </div>
-
-          {/* Load More */}
-          {filteredInsights.length > 0 && (
-            <Button variant="outline" className="w-full border-slate-600 text-slate-300">
-              Load More Insights
-            </Button>
-          )}
         </div>
       </div>
     </div>

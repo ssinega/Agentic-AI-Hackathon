@@ -31,9 +31,9 @@ export function clusterInsightsIntoThemes(insights: Insight[]): Theme[] {
 }
 
 /**
- * Generate personas from insights and themes
+ * Generate personas from insights and themes (legacy - not used in production)
  */
-export function generatePersonasFromInsights(
+export function clusterPersonasFromInsights(
   insights: Insight[],
   themes: Theme[],
   projectId: string
@@ -258,4 +258,354 @@ export function analyzeSentiment(text: string): string {
  */
 export function calculateConfidence(frequency: number, maxFrequency: number): number {
   return Math.min(frequency / (maxFrequency > 0 ? maxFrequency : 1), 1);
+}
+
+
+/**
+ * DATABASE AUTO-GENERATION FUNCTIONS
+ * These functions take extracted insights and auto-generate themes, personas, and opportunities
+ */
+
+import { prisma } from "@/lib/prisma";
+import type { InsightData } from "@/lib/insight-extractor";
+
+/**
+ * Auto-generate themes from extracted insights
+ * Creates or updates themes in the database
+ */
+export async function generateThemesFromInsights(
+  projectId: string,
+  insights: InsightData
+): Promise<number> {
+  try {
+    let createdOrUpdatedCount = 0;
+
+    // Process extracted themes
+    for (const extractedTheme of insights.themes) {
+      // Check if theme already exists
+      const existingTheme = await prisma.theme.findFirst({
+        where: {
+          projectId,
+          name: extractedTheme.name,
+        },
+      });
+
+      if (existingTheme) {
+        // Update existing theme
+        await prisma.theme.update({
+          where: { id: existingTheme.id },
+          data: {
+            frequency: {
+              increment: extractedTheme.frequency || 1,
+            },
+            description:
+              extractedTheme.description || existingTheme.description,
+            trend: "increasing",
+            impact: extractedTheme.frequency
+              ? extractedTheme.frequency > 5
+                ? "high"
+                : extractedTheme.frequency > 2
+                  ? "medium"
+                  : "low"
+              : existingTheme.impact,
+          },
+        });
+        createdOrUpdatedCount++;
+      } else {
+        // Create new theme
+        await prisma.theme.create({
+          data: {
+            projectId,
+            name: extractedTheme.name,
+            description: extractedTheme.description,
+            frequency: extractedTheme.frequency || 1,
+            trend: "increasing",
+            impact: extractedTheme.frequency
+              ? extractedTheme.frequency > 5
+                ? "high"
+                : extractedTheme.frequency > 2
+                  ? "medium"
+                  : "low"
+              : "medium",
+          },
+        });
+        createdOrUpdatedCount++;
+      }
+    }
+
+    // Also generate themes from pain points and feature requests
+    const painPointTheme = await prisma.theme.findFirst({
+      where: {
+        projectId,
+        name: "Pain Points",
+      },
+    });
+
+    if (insights.painPoints.length > 0) {
+      if (painPointTheme) {
+        await prisma.theme.update({
+          where: { id: painPointTheme.id },
+          data: {
+            frequency: {
+              increment: insights.painPoints.length,
+            },
+          },
+        });
+      } else {
+        await prisma.theme.create({
+          data: {
+            projectId,
+            name: "Pain Points",
+            description: "User pain points and frustrations identified",
+            frequency: insights.painPoints.length,
+            trend: "stable",
+            impact: "high",
+          },
+        });
+      }
+      createdOrUpdatedCount++;
+    }
+
+    return createdOrUpdatedCount;
+  } catch (error) {
+    console.error("Error generating themes:", error);
+    throw error;
+  }
+}
+
+/**
+ * Auto-generate personas from extracted insights
+ * Creates or updates personas in the database
+ */
+export async function generatePersonasFromInsights(
+  projectId: string,
+  insights: InsightData
+): Promise<number> {
+  try {
+    let createdOrUpdatedCount = 0;
+
+    // Process extracted personas
+    for (const extractedPersona of insights.personas) {
+      const existingPersona = await prisma.persona.findFirst({
+        where: {
+          projectId,
+          name: extractedPersona.name,
+        },
+      });
+
+      if (existingPersona) {
+        // Update existing persona
+        const currentGoals = JSON.parse(existingPersona.goals || "[]");
+        const currentPainPoints = JSON.parse(
+          existingPersona.painPoints || "[]"
+        );
+
+        const updatedGoals = [
+          ...new Set([
+            ...currentGoals,
+            ...(extractedPersona.goals || []),
+          ]),
+        ];
+        const updatedPainPoints = [
+          ...new Set([
+            ...currentPainPoints,
+            ...(extractedPersona.painPoints || []),
+          ]),
+        ];
+
+        await prisma.persona.update({
+          where: { id: existingPersona.id },
+          data: {
+            role:
+              extractedPersona.jobTitle ||
+              existingPersona.role,
+            goals: JSON.stringify(updatedGoals),
+            painPoints: JSON.stringify(updatedPainPoints),
+            behavior:
+              extractedPersona.behavior || existingPersona.behavior,
+            documentCount: {
+              increment: 1,
+            },
+            confidence: Math.min(
+              100,
+              Math.round(
+                (existingPersona.confidence +
+                  (extractedPersona.confidence || 60)) /
+                  2
+              )
+            ),
+            segment:
+              extractedPersona.segment || existingPersona.segment,
+          },
+        });
+        createdOrUpdatedCount++;
+      } else {
+        // Create new persona
+        await prisma.persona.create({
+          data: {
+            projectId,
+            name: extractedPersona.name,
+            role: extractedPersona.jobTitle,
+            description: `Persona: ${extractedPersona.name}`,
+            goals: JSON.stringify(extractedPersona.goals || []),
+            painPoints: JSON.stringify(
+              extractedPersona.painPoints || []
+            ),
+            behavior: extractedPersona.behavior,
+            confidence: extractedPersona.confidence || 60,
+            segment: extractedPersona.segment,
+            documentCount: 1,
+          },
+        });
+        createdOrUpdatedCount++;
+      }
+    }
+
+    return createdOrUpdatedCount;
+  } catch (error) {
+    console.error("Error generating personas:", error);
+    throw error;
+  }
+}
+
+/**
+ * Auto-generate opportunities from extracted insights
+ * Creates or updates opportunities in the database
+ */
+export async function generateOpportunitiesFromInsights(
+  projectId: string,
+  insights: InsightData
+): Promise<number> {
+  try {
+    let createdOrUpdatedCount = 0;
+
+    // Process extracted opportunities
+    for (const extractedOpp of insights.opportunities) {
+      const existingOpp = await prisma.opportunity.findFirst({
+        where: {
+          projectId,
+          title: extractedOpp.title,
+        },
+      });
+
+      if (existingOpp) {
+        // Update existing opportunity
+        await prisma.opportunity.update({
+          where: { id: existingOpp.id },
+          data: {
+            frequency: {
+              increment: 1,
+            },
+            description: extractedOpp.description,
+            businessValue: extractedOpp.justification,
+            timeToImplement: extractedOpp.estimatedEffort,
+            impactLevel:
+              extractedOpp.priority && extractedOpp.priority > 6
+                ? "high"
+                : extractedOpp.priority && extractedOpp.priority > 3
+                  ? "medium"
+                  : "low",
+          },
+        });
+        createdOrUpdatedCount++;
+      } else {
+        // Create new opportunity
+        await prisma.opportunity.create({
+          data: {
+            projectId,
+            title: extractedOpp.title,
+            description: extractedOpp.description,
+            score: extractedOpp.priority ? extractedOpp.priority * 10 : 50,
+            roi: extractedOpp.estimatedROI || 50,
+            businessValue: extractedOpp.justification,
+            timeToImplement: extractedOpp.estimatedEffort,
+            impactLevel:
+              extractedOpp.priority && extractedOpp.priority > 6
+                ? "high"
+                : extractedOpp.priority && extractedOpp.priority > 3
+                  ? "medium"
+                  : "low",
+            confidence: 70,
+            frequency: 1,
+          },
+        });
+        createdOrUpdatedCount++;
+      }
+    }
+
+    // Also generate opportunities from pain points
+    if (insights.painPoints.length > 0) {
+      const painPointOpp = await prisma.opportunity.findFirst({
+        where: {
+          projectId,
+          title: "Resolve Top Pain Points",
+        },
+      });
+
+      if (painPointOpp) {
+        await prisma.opportunity.update({
+          where: { id: painPointOpp.id },
+          data: {
+            frequency: {
+              increment: 1,
+            },
+          },
+        });
+      } else {
+        await prisma.opportunity.create({
+          data: {
+            projectId,
+            title: "Resolve Top Pain Points",
+            description: `Address ${insights.painPoints.length} identified user pain points`,
+            score: 80,
+            roi: 75,
+            impactLevel: "high",
+            confidence: 85,
+            frequency: 1,
+          },
+        });
+      }
+      createdOrUpdatedCount++;
+    }
+
+    // Generate opportunities from feature requests
+    if (insights.featureRequests.length > 0) {
+      const featureOpp = await prisma.opportunity.findFirst({
+        where: {
+          projectId,
+          title: "Implement Requested Features",
+        },
+      });
+
+      if (featureOpp) {
+        await prisma.opportunity.update({
+          where: { id: featureOpp.id },
+          data: {
+            frequency: {
+              increment: 1,
+            },
+          },
+        });
+      } else {
+        await prisma.opportunity.create({
+          data: {
+            projectId,
+            title: "Implement Requested Features",
+            description: `Implement ${insights.featureRequests.length} requested features to increase user satisfaction`,
+            score: 75,
+            roi: 65,
+            impactLevel: "high",
+            confidence: 80,
+            frequency: 1,
+          },
+        });
+      }
+      createdOrUpdatedCount++;
+    }
+
+    return createdOrUpdatedCount;
+  } catch (error) {
+    console.error("Error generating opportunities:", error);
+    throw error;
+  }
 }

@@ -6,150 +6,291 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
+// ========== MODELS ==========
+
 model User {
-  id        String     @id @default(cuid())
-  email     String     @unique
-  name      String?
-  avatar    String?
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id       String  @id @default(cuid())
+  email    String  @unique
+  password String // Hashed password
+  name     String?
+  avatar   String?
 
+  // Role: ADMIN, MANAGER, ANALYST, VIEWER
+  role String @default("ANALYST")
+
+  // Preferences stored as JSON string
+  preferences String @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
   projects     Project[]
-  chatHistory  ChatHistory[]
+  chatMessages ChatMessage[]
 
+  @@index([email])
   @@map("users")
 }
 
 model Project {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   name        String
   description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  archivedAt  DateTime?
 
-  documents    Document[]
-  insights     Insight[]
-  themes       Theme[]
-  personas     Persona[]
+  // Status: ACTIVE, ARCHIVED
+  status String @default("ACTIVE")
+
+  // Tags stored as JSON array string
+  tags String @default("[]")
+
+  // Collaborator IDs stored as JSON array string
+  collaboratorIds String @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  documents     Document[]
+  insights      Insight[]
+  themes        Theme[]
+  personas      Persona[]
   opportunities Opportunity[]
-  reports      Report[]
-  chatHistory  ChatHistory[]
+  reports       Report[]
+  chatMessages  ChatMessage[]
 
   @@index([userId])
+  @@index([status])
   @@map("projects")
 }
 
 model Document {
-  id           String   @id @default(cuid())
-  projectId    String
-  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
   originalName String
-  filePath     String
-  fileType     String
-  fileSize     Int
-  uploadedAt   DateTime @default(now())
+  storageUrl   String // URL/path where file is stored
+  contentType  String // MIME type: application/pdf, text/plain, etc.
+  fileSize     Int // in bytes
+
+  // Status: UPLOADED, PROCESSING, COMPLETED, FAILED
+  status String @default("UPLOADED")
+
+  // Extracted text from document
+  extractedText String?
+
+  uploadedAt  DateTime  @default(now())
+  processedAt DateTime?
+
+  // Relations
+  insights Insight[]
 
   @@index([projectId])
+  @@index([status])
   @@map("documents")
 }
 
 model Insight {
-  id          String   @id @default(cuid())
-  projectId   String
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  type        String   // customer_need, pain_point, feature_request, etc.
-  content     String
-  frequency   Int      @default(1)
-  sentiment   String?  // positive, negative, neutral
-  confidence  Float    @default(0.0)
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  documentId String?
+  document   Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  // Type: PAIN_POINT, FEATURE_REQUEST, COMPLAINT, QUOTE, FEEDBACK, CUSTOM_NEED
+  type    String @default("CUSTOM_NEED")
+  content String // The actual insight text
+
+  // Severity: LOW, MEDIUM, HIGH
+  severity String @default("MEDIUM")
+
+  // Sentiment: POSITIVE, NEUTRAL, NEGATIVE
+  sentiment String? @default("NEUTRAL")
+
+  // Confidence score 0-100
+  confidence Int @default(50)
+
+  // How many times this insight was mentioned
+  frequency Int @default(1)
+
   extractedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  themes        Theme[]       @relation("ThemeInsights")
+  opportunities Opportunity[] @relation("OpportunityInsights")
+  reports       Report[]      @relation("ReportInsights")
 
   @@index([projectId])
+  @@index([documentId])
+  @@index([type])
+  @@index([severity])
   @@map("insights")
 }
 
 model Theme {
-  id             String   @id @default(cuid())
-  projectId      String
-  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  name           String
-  description    String?
-  frequency      Int      @default(1)
-  relatedInsights String[] // Array of insight IDs
-  createdAt      DateTime @default(now())
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+
+  frequency Int @default(1)
+
+  // Trend direction: increasing, stable, decreasing
+  trend String?
+
+  // Impact assessment: low, medium, high
+  impact String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  insights Insight[] @relation("ThemeInsights")
+  reports  Report[]  @relation("ReportThemes")
 
   @@index([projectId])
   @@map("themes")
 }
 
 model Persona {
-  id           String   @id @default(cuid())
-  projectId    String
-  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  type         String   // primary, secondary, tertiary
-  name         String
-  role         String?
-  description  String?
-  frustrations String?
-  goals        String?
-  behaviors    String?
-  size         String?  // large, medium, small
-  createdAt    DateTime @default(now())
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  name        String
+  role        String?
+  description String?
+
+  // Goals stored as JSON array string of strings
+  goals String @default("[]")
+
+  // Pain points stored as JSON array string of strings
+  painPoints String @default("[]")
+
+  // Behavioral data stored as text
+  behavior String?
+
+  // Count of documents this persona was extracted from
+  documentCount Int @default(1)
+
+  // Confidence in persona 0-100
+  confidence Int @default(50)
+
+  // Persona type/segment
+  segment String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  reports Report[] @relation("ReportPersonas")
 
   @@index([projectId])
   @@map("personas")
 }
 
 model Opportunity {
-  id          String   @id @default(cuid())
-  projectId   String
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
   title       String
   description String
-  frequency   Int      @default(1)
-  severity    String   // high, medium, low
-  revenue     String?
-  confidence  Float    @default(0.0)
-  score       Float    @default(0.0)
-  ranking     Int?
-  createdAt   DateTime @default(now())
+
+  // Score 0-100 representing opportunity priority
+  score Int @default(50)
+
+  // ROI estimation 0-100
+  roi Int @default(0)
+
+  // Business value assessment
+  businessValue String?
+
+  // Estimated time to implement (in days, weeks, months, etc.)
+  timeToImplement String?
+
+  // Impact level: low, medium, high
+  impactLevel String?
+
+  // Confidence in this opportunity 0-100
+  confidence Int @default(50)
+
+  frequency Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  insights Insight[] @relation("OpportunityInsights")
+  reports  Report[]  @relation("ReportOpportunities")
 
   @@index([projectId])
+  @@index([score])
   @@map("opportunities")
 }
 
 model Report {
-  id          String   @id @default(cuid())
-  projectId   String
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  title       String
-  generatedAt DateTime @default(now())
-  content     String   // HTML or JSON content
-  format      String   // html, pdf, json
-  createdAt   DateTime @default(now())
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title String
+
+  // Type: EXECUTIVE_SUMMARY, FULL_ANALYSIS
+  reportType String @default("FULL_ANALYSIS")
+
+  // Status: PENDING, GENERATING, COMPLETED, FAILED
+  status String @default("PENDING")
+
+  // Report content stored as JSON string
+  content String?
+
+  // Supported export formats: pdf, json, html, xlsx (JSON array string)
+  exportFormats String @default("[\"json\"]")
+
+  generatedAt DateTime  @default(now())
+  expiresAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  insights      Insight[]     @relation("ReportInsights")
+  themes        Theme[]       @relation("ReportThemes")
+  personas      Persona[]     @relation("ReportPersonas")
+  opportunities Opportunity[] @relation("ReportOpportunities")
 
   @@index([projectId])
+  @@index([status])
   @@map("reports")
 }
 
-model ChatHistory {
-  id        String   @id @default(cuid())
+model ChatMessage {
+  id        String  @id @default(cuid())
   projectId String
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  message   String
-  response  String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Role: USER, ASSISTANT
+  role    String @default("USER")
+  content String // The message content
+
   createdAt DateTime @default(now())
 
   @@index([projectId])
   @@index([userId])
-  @@map("chat_history")
+  @@map("chat_messages")
 }

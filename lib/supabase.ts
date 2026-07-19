@@ -1,8 +1,8 @@
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+// Supabase client stub - not used in this version
+// Authentication is handled via JWT tokens stored in localStorage/cookies
+// This file is kept for backward compatibility
 
-
-export const createClient = () =>
-  createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+export const createClient = () => {
+  console.warn("Supabase client is deprecated. Use JWT auth instead.");
+  return null;
+};

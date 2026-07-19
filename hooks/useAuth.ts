@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCurrentUser, getSession } from "@/lib/auth";
-import { User } from "@supabase/supabase-js";
+import { getCurrentUser, AuthUser } from "@/lib/auth";
 
 export function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,14 +27,14 @@ export function useAuth() {
 }
 
 export function useSession() {
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function getSessionData() {
       try {
-        const sess = await getSession();
-        setSession(sess);
+        const user = await getCurrentUser();
+        setSession(user);
       } finally {
         setLoading(false);
       }

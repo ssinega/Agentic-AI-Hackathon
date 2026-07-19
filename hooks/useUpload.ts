@@ -3,14 +3,76 @@
 import { useState, useCallback } from "react";
 import { UploadProgress } from "@/types";
 
+const SUPPORTED_FORMATS = ["pdf", "docx", "xlsx", "csv", "txt"];
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
+function getFileExtension(fileName: string): string {
+  return fileName.split(".").pop()?.toLowerCase() || "";
+}
+
+function isValidFile(file: File): { valid: boolean; error?: string } {
+  // Check file size
+  if (file.size > MAX_FILE_SIZE) {
+    return { valid: false, error: `File too large. Max size is 50MB` };
+  }
+
+  // Check file type
+  const ext = getFileExtension(file.name);
+  if (!SUPPORTED_FORMATS.includes(ext)) {
+    return {
+      valid: false,
+      error: `Unsupported format. Supported: ${SUPPORTED_FORMATS.join(", ")}`,
+    };
+  }
+
+  return { valid: true };
+}
+
 export function useUpload() {
   const [uploads, setUploads] = useState<UploadProgress[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+
+  const validateFiles = useCallback(
+    (files: File[]): { valid: File[]; errors: { fileName: string; error: string }[] } => {
+      const validFiles: File[] = [];
+      const errors: { fileName: string; error: string }[] = [];
+
+      files.forEach((file) => {
+        const validation = isValidFile(file);
+        if (validation.valid) {
+          validFiles.push(file);
+        } else {
+          errors.push({
+            fileName: file.name,
+            error: validation.error || "Invalid file",
+          });
+        }
+      });
+
+      return { valid: validFiles, errors };
+    },
+    []
+  );
 
   const uploadFile = useCallback(
     async (file: File, projectId: string) => {
       setIsUploading(true);
 
+      // Validate file
+      const validation = isValidFile(file);
+      if (!validation.valid) {
+        setUploads((prev) => [
+          ...prev,
+          {
+            fileName: file.name,
+            progress: 0,
+            status: "error",
+            error: validation.error,
+          },
+        ]);
+        setIsUploading(false);
+        return;
+      }
 
       // Add file to uploads
       setUploads((prev) => [
@@ -45,7 +107,7 @@ export function useUpload() {
 
         // Handle completion
         xhr.addEventListener("load", () => {
-          if (xhr.status === 200) {
+          if (xhr.status === 200 || xhr.status === 201) {
             setUploads((prev) =>
               prev.map((u) =>
                 u.fileName === file.name
@@ -54,13 +116,20 @@ export function useUpload() {
               )
             );
           } else {
+            const errorData = (() => {
+              try {
+                return JSON.parse(xhr.responseText);
+              } catch {
+                return { error: "Upload failed" };
+              }
+            })();
             setUploads((prev) =>
               prev.map((u) =>
                 u.fileName === file.name
                   ? {
                       ...u,
                       status: "error" as const,
-                      error: "Upload failed",
+                      error: errorData.error || "Upload failed",
                     }
                   : u
               )
@@ -109,10 +178,17 @@ export function useUpload() {
     setUploads([]);
   }, []);
 
+  const clearUpload = useCallback((fileName: string) => {
+    setUploads((prev) => prev.filter((u) => u.fileName !== fileName));
+  }, []);
+
   return {
     uploads,
     isUploading,
     uploadFile,
     clearUploads,
+    clearUpload,
+    validateFiles,
   };
 }
+
