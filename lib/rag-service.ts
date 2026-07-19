@@ -187,8 +187,8 @@ export async function retrieveProjectContext(
 
     return {
       insights,
-      themes,
-      personas,
+      themes: themes.map(t => ({ ...t, description: t.description || undefined, impact: t.impact || undefined })),
+      personas: personas.map(p => ({ ...p, role: p.role || undefined })),
       opportunities,
     };
   } catch (error) {
